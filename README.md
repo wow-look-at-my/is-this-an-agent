@@ -39,5 +39,9 @@ whether the agent itself is reading their output.
 Any process can set `CLAUDECODE=1`, and an agent can be renamed out of the
 roster. This tells a tool how to behave, and proves nothing to an adversary.
 
-Adding an agent means adding it to the roster in `agent.go` **and** adding its
-script; the tests fail on either half alone.
+## Adding an agent
+
+Add it to the roster in `agent.go`, then run `go run ./cmd/gen-scripts`. The
+scripts are generated from that roster plus `scripts/engine.sh` — never edited
+by hand — and a test fails the build if a committed script is not what the
+generator produces.

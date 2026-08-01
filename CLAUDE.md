@@ -29,11 +29,17 @@ standalone shell script per agent.
 - `capture.go` — `IsCapturePath`: the one redirect that does not hide output
   (the harness's own transcript capture). Claude-only, because it is the only
   agent whose capture path is identifiable.
-- `scripts/is-this-*.sh` — one standalone POSIX sh script per agent, plus
-  `is-this-an-agent.sh` for any. Exit 0 = detected. They duplicate a shared
-  engine block **byte-identically** (standalone means nothing to source);
-  `scripts_test.go` fails on drift, on a roster/script mismatch, and on
-  bashisms.
+- `scripts/engine.sh` — the shared POSIX sh detection engine, and the only
+  copy anyone edits.
+- `scripts/is-this-*.sh` — **generated** (`go run ./cmd/gen-scripts`), one
+  standalone script per agent plus `is-this-an-agent.sh` for any. Exit 0 =
+  detected. Standalone means nothing to source, which means the engine is
+  embedded in each — duplication a generator produces and a test re-derives,
+  never duplication a human maintains.
+- `scriptgen.go` + `cmd/gen-scripts` — the generator: roster + engine.sh in,
+  scripts out (`GeneratedScripts`, `RenderScript`, `RenderRosterScript`).
+  `scripts_test.go` regenerates and compares, so a stale script fails CI; it
+  also parses each script with `sh -n`, runs them, and bans bashisms.
 
 ## Invariants
 
@@ -52,6 +58,6 @@ standalone shell script per agent.
 
 1. Add it to `roster` in `agent.go` with its markers, process prefixes and any
    PID variable, and say in a comment where the markers came from.
-2. Add `scripts/is-this-<id>.sh` — copy an existing one, change only the
-   header block; the engine must stay byte-identical.
-3. Run `go-toolchain`. The tests check both halves agree.
+2. Run `go run ./cmd/gen-scripts` — the script for it is generated, along with
+   its entry in `is-this-an-agent.sh`. Never write one by hand.
+3. Run `go-toolchain`. A forgotten regeneration is a failing test.

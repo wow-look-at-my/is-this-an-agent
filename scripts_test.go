@@ -12,9 +12,10 @@ import (
 )
 
 // The scripts answer the same question as this package for callers that are a
-// shell, so they carry a copy of the roster's data. These tests are what keep
-// the copy true: markers that drift are markers that quietly stop detecting an
-// agent, in the one place nobody thinks to look.
+// shell. They are GENERATED from the roster and scripts/engine.sh, so what
+// needs checking is not that two hand-maintained copies still agree -- nothing
+// is hand-maintained -- but that the committed scripts are what the generator
+// produces today, and that they actually behave.
 
 const scriptsDir = "scripts"
 
@@ -65,81 +66,29 @@ func TestEveryAgentHasAScript(t *testing.T) {
 	}
 }
 
-func TestScriptMarkersMatchTheRoster(t *testing.T) {
-	// The per-agent scripts declare their markers as shell variables. Those
-	// declarations ARE the roster data, restated -- so they must match it
-	// exactly, in content and order.
-	for _, a := range Roster() {
-		t.Run(a.ID, func(t *testing.T) {
-			body, err := os.ReadFile(scriptPath(a.ID))
-			require.NoError(t, err)
-			src := string(body)
-
-			assert.Equal(t, a.Name, shellVar(t, src, "AGENT_NAME"))
-			assert.Equal(t, strings.Join(a.EnvVars, " "), shellVar(t, src, "AGENT_ENV_VARS"))
-			assert.Equal(t, strings.Join(a.Procs, " "), shellVar(t, src, "AGENT_PROCS"))
-			assert.Equal(t, strings.Join(a.PIDVars, " "), shellVar(t, src, "AGENT_PID_VARS"))
-		})
+func TestGeneratedScriptsAreUpToDate(t *testing.T) {
+	// The one check that replaces every hand-maintained-copy check: an agent
+	// added to the roster, a marker corrected, or an engine edit that was not
+	// regenerated all land here, as a diff.
+	for name, want := range GeneratedScripts() {
+		path := filepath.Join(scriptsDir, name)
+		got, err := os.ReadFile(path)
+		require.NoError(t, err, "%s is missing -- run: go run ./cmd/gen-scripts", path)
+		assert.Equal(t, want, string(got),
+			"%s is stale -- run: go run ./cmd/gen-scripts", path)
 	}
 }
 
-func TestRosterScriptMatchesTheRoster(t *testing.T) {
-	body, err := os.ReadFile(scriptPath(""))
-	require.NoError(t, err)
-	records := shellVar(t, string(body), "AGENT_ROSTER")
-
-	var want []string
-	for _, a := range Roster() {
-		want = append(want, strings.Join([]string{
-			a.ID, a.Name,
-			strings.Join(a.EnvVars, " "),
-			strings.Join(a.Procs, " "),
-			strings.Join(a.PIDVars, " "),
-		}, "|"))
+func TestGeneratedScriptsAreValidShell(t *testing.T) {
+	// `sh -n` parses without executing: a broken generator template must fail
+	// here, not the first time somebody runs the script.
+	for name := range GeneratedScripts() {
+		path := filepath.Join(scriptsDir, name)
+		out, err := exec.Command("/bin/sh", "-n", path).CombinedOutput()
+		assert.NoError(t, err, "%s is not valid sh: %s", path, out)
 	}
-	assert.Equal(t, strings.Join(want, "\n"), records)
-}
-
-// shellVar extracts a single-quoted shell assignment (NAME='value'), which is
-// the only form these scripts use for roster data.
-func shellVar(t *testing.T, src, name string) string {
-	t.Helper()
-	marker := "\n" + name + "='"
-	i := strings.Index("\n"+src, marker)
-	require.GreaterOrEqual(t, i, 0, "%s is not assigned in the script", name)
-	rest := ("\n" + src)[i+len(marker):]
-	end := strings.Index(rest, "'")
-	require.GreaterOrEqual(t, end, 0, "%s assignment is not closed", name)
-	return rest[:end]
-}
-
-func TestScriptEnginesAreIdentical(t *testing.T) {
-	// The scripts are standalone on purpose -- copy one anywhere and it runs
-	// -- so the engine is duplicated rather than sourced. Duplication is only
-	// safe while the copies are identical, which is what this checks.
-	const start = "# --- shared detection engine "
-	const end = "# --- end shared detection engine "
-
-	var reference, referenceName string
-	for _, a := range append(Roster(), Agent{ID: ""}) {
-		path := scriptPath(a.ID)
-		body, err := os.ReadFile(path)
-		require.NoError(t, err)
-		src := string(body)
-
-		i := strings.Index(src, start)
-		j := strings.Index(src, end)
-		require.GreaterOrEqual(t, i, 0, "%s has no engine block", path)
-		require.Greater(t, j, i, "%s has no engine terminator", path)
-		block := src[i:j]
-
-		if reference == "" {
-			reference, referenceName = block, path
-			continue
-		}
-		assert.Equal(t, reference, block,
-			"the detection engine in %s has drifted from %s", path, referenceName)
-	}
+	out, err := exec.Command("/bin/sh", "-n", filepath.Join(scriptsDir, "engine.sh")).CombinedOutput()
+	assert.NoError(t, err, "engine.sh is not valid sh: %s", out)
 }
 
 func TestScriptsDetectTheirMarker(t *testing.T) {
