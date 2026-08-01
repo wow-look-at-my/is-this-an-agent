@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+
+permissions:
+  id-token: write
+  contents: write
+  actions: read
+  checks: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+      # autorelease off: this repo has nothing to publish. The Go half is
+      # consumed through go.mod and the scripts straight from the repo, so the
+      # only thing a release would carry is cmd/gen-scripts -- the internal
+      # generator, which belongs on nobody's machine but CI's. Without the
+      # publish there is also nothing needing deployments: write or
+      # artifact-metadata: write, so those grants are gone too.
+      - uses: wow-look-at-my/go-toolchain@v1
+        with:
+          autorelease: 'false'
