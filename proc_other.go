@@ -1,14 +1,15 @@
-//go:build !linux && !cosmo
+//go:build !linux && !cosmo && !darwin
 
-// Stubs for platforms with no /proc (native darwin and windows builds): the
-// LOOKUP is missing here, not the matching rules -- AncestorAgent and friends
-// in walk.go take a chain from the caller and work everywhere. Detect falls
-// back to the agents' environment markers when ProcessAncestor reports
+// Stubs for platforms with no process-tree lookup at all (windows builds):
+// the LOOKUP is missing here, not the matching rules -- AncestorAgent and
+// friends in walk.go take a chain from the caller and work everywhere. Detect
+// falls back to the agents' environment markers when ProcessAncestor reports
 // nothing, which is what makes detection still work here.
 //
 // These must never shadow the real implementations: the released "linux"
 // binaries of this org's tools are GOOS=cosmo APE copies, and cosmo is
-// excluded from this file for exactly that reason (see proc.go).
+// excluded from this file for exactly that reason (see proc.go), and native
+// darwin builds have their own sysctl-backed lookup (see proc_darwin.go).
 
 package agent
 
