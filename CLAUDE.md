@@ -23,9 +23,12 @@ standalone shell script per agent.
   constraint is `linux || cosmo`, NOT `linux`: this org's released "linux"
   binaries are GOOS=cosmo APE copies, and a `_linux.go` filename would compile
   detection out of every one of them while the GOOS=linux tests stayed green.
-- `proc_other.go` (`!linux && !cosmo`) — stubs for platforms with no /proc;
-  detection there is by environment marker. They answer `false`, never a
-  guess: callers use them to GRANT an allowance.
+- `proc_darwin.go` (`darwin`) — the sysctl(KERN_PROC) lookup `CommPPID` plus
+  the real entry points, for native darwin builds (no /proc there).
+- `proc_other.go` (`!linux && !cosmo && !darwin`) — stubs for platforms with
+  no process-tree lookup at all (windows); detection there is by environment
+  marker. They answer `false`, never a guess: callers use them to GRANT an
+  allowance.
 - `capture.go` — `IsCapturePath`: the one redirect that does not hide output
   (the harness's own transcript capture). Claude-only, because it is the only
   agent whose capture path is identifiable.
