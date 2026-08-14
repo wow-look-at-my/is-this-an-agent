@@ -1,21 +1,13 @@
-//go:build linux || cosmo
+//go:build linux || darwin || cosmo
 
-// The /proc-backed lookup, and the process-tree entry points built on it.
-//
-// The build constraint is `linux || cosmo`, not `linux`, and that matters: a
-// GOOS=cosmo binary (a gosmopolitan fat APE) runs on Linux hosts and has a real
-// /proc there, but cosmo matches the `unix` build tag rather than `linux` -- so
-// a `_linux.go` filename would silently compile every ancestry check out of an
-// APE while the GOOS=linux tests stayed green. proc_other.go carries the stubs
-// for everything else.
+// The process-tree entry points, for every platform that has a lookup to
+// build them on. Which lookup CommPPID is comes from the platform: /proc
+// (proc_linux.go), sysctl (proc_darwin.go), or a host dispatch between /proc
+// and ps (proc_cosmo.go). proc_other.go carries the stubs for the rest.
 
 package agent
 
-import (
-	"os"
-	"strconv"
-	"strings"
-)
+import "os"
 
 // ProcessAncestor returns the agent owning an ancestor of this process.
 func ProcessAncestor() (Agent, bool) {
@@ -32,32 +24,4 @@ func IsAncestorPID(target int) bool {
 // pipes is an agent capturing our output. See PipeReader.
 func IsPipeReader(comm string, pid int) bool {
 	return PipeReader(comm, pid, os.Getppid(), CommPPID)
-}
-
-// CommPPID reads /proc/<pid>/stat and returns the process's comm and its
-// parent PID. ok is false if the entry cannot be read or parsed.
-func CommPPID(pid int) (comm string, ppid int, ok bool) {
-	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-	if err != nil {
-		return "", 0, false
-	}
-	s := string(data)
-	// Field layout: "<pid> (<comm>) <state> <ppid> ...". comm may itself
-	// contain spaces and parentheses, so anchor on the LAST ')' rather than
-	// splitting the whole line into fields.
-	open := strings.IndexByte(s, '(')
-	closeParen := strings.LastIndexByte(s, ')')
-	if open < 0 || closeParen < open {
-		return "", 0, false
-	}
-	comm = s[open+1 : closeParen]
-	fields := strings.Fields(s[closeParen+1:]) // [state, ppid, ...]
-	if len(fields) < 2 {
-		return "", 0, false
-	}
-	ppid, err = strconv.Atoi(fields[1])
-	if err != nil {
-		return "", 0, false
-	}
-	return comm, ppid, true
 }
