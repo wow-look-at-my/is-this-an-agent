@@ -34,6 +34,16 @@ available: `Is("claude")`, `Roster()`, `FromEnv()`, `ProcessAncestor()`,
 `ForProcess(comm)`, and `IsPipeReader(comm, pid)` for tools that need to know
 whether the agent itself is reading their output.
 
+## Platforms
+
+Ancestry is read from `/proc` on Linux and `sysctl(KERN_PROC)` on macOS. A
+GOOS=cosmo APE — one binary that boots on both — picks at runtime via
+`HostOS()`, so detection works on a Mac too.
+
+`HostOS()` reports `"linux"`, `"darwin"`, `"windows"`, or `""` when a sandbox
+left nothing to go on. It never guesses a host. Where there is no process
+lookup at all (Windows), detection falls back to environment markers.
+
 ## Detection is advisory
 
 Any process can set `CLAUDECODE=1`, and an agent can be renamed out of the
