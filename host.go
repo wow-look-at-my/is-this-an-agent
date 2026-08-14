@@ -30,6 +30,20 @@ const (
 	hostUnknown = ""
 )
 
+// The signals HostOS can decide from, reported by HostSource. A detector that
+// says HOW it decided is one that can be read off a log line instead of
+// reasoned about: "denied probe" and "read the machine" look identical in an
+// answer, and different in a source.
+const (
+	sourceGOOS         = "goos"         // compiled for the host it runs on
+	sourceRuntime      = "runtime"      // the host the APE loader booted
+	sourceUname        = "uname"        // uname(2) named it
+	sourceProcfs       = "procfs"       // /proc/self is there
+	sourceCoreServices = "coreservices" // /System/Library/CoreServices is there
+	sourceNoProcfs     = "no-procfs"    // /proc/self is definitively absent
+	sourceNone         = ""             // nothing identified the host
+)
+
 // pathState is what a stat of a probe path established. The three-way split
 // is the whole point: a sandbox answers a denied path with EPERM, and reading
 // that as "absent" is how a probe concludes "linux" on a Mac.
@@ -77,49 +91,48 @@ type hostEvidence struct {
 	coreServices pathState
 }
 
-// hostFromEvidence names the host OS, or hostUnknown when the evidence does
-// not identify it.
+// hostFromEvidence names the host OS and the signal that named it, or
+// hostUnknown and sourceNone when the evidence identifies nothing.
 //
 // The rungs are ordered by how much a sandbox can interfere with them. What
 // the runtime was booted with is fact and outranks everything. uname is a
 // syscall, so no filesystem policy can change its answer. The path checks
 // below it only ever fire on a successful stat, because a refused one is not
-// evidence. The last rung is what carries a macOS host whose /System/Library
-// is unreadable: a definite ENOENT on procfs rules Linux out, and under cosmo
-// the host is Linux or macOS.
+// evidence -- and the last rung reads a definite procfs ENOENT as ruling Linux
+// out, so a macOS host whose /System/Library cannot be read is still darwin.
 //
 // No rung ends in a default. Evidence that identifies nothing yields
 // hostUnknown, because a host that answers "linux" because nothing could be
 // read is the exact failure this probe exists to avoid.
-func hostFromEvidence(e hostEvidence) string {
+func hostFromEvidence(e hostEvidence) (host, source string) {
 	switch e.runtimeHost {
 	case hostLinux, hostDarwin:
-		return e.runtimeHost
+		return e.runtimeHost, sourceRuntime
 	}
 
 	switch strings.ToLower(e.unameSysname) {
 	case "linux":
-		return hostLinux
+		return hostLinux, sourceUname
 	case "darwin", "xnu":
-		return hostDarwin
+		return hostDarwin, sourceUname
 	case "":
 	default:
 		// uname named an OS this package does not dispatch for. Its
 		// silence is the darwin signal the last rung relies on, so a
 		// name that is not darwin's must not fall through to it.
-		return hostUnknown
+		return hostUnknown, sourceNone
 	}
 
 	if e.procSelf == pathPresent {
-		return hostLinux
+		return hostLinux, sourceProcfs
 	}
 	if e.coreServices == pathPresent {
-		return hostDarwin
+		return hostDarwin, sourceCoreServices
 	}
 	if e.procSelf == pathAbsent {
-		return hostDarwin
+		return hostDarwin, sourceNoProcfs
 	}
-	return hostUnknown
+	return hostUnknown, sourceNone
 }
 
 // lookupForHost picks the process lookup for a host OS: /proc on Linux,

@@ -10,7 +10,9 @@ import (
 // A GOOS=cosmo binary is one fat APE that boots natively on Linux and macOS
 // hosts alike, reporting runtime.GOOS == "cosmo" on both, so the host has to
 // be probed at runtime. The result is memoized: a process cannot change hosts.
-var hostOS = sync.OnceValue(func() string { return hostFromEvidence(gatherHostEvidence()) })
+var probeHost = sync.OnceValues(func() (host, source string) {
+	return hostFromEvidence(gatherHostEvidence())
+})
 
 // HostOS returns the operating system this APE is running on: "linux",
 // "darwin", or "" when the probe could not identify it.
@@ -22,7 +24,22 @@ var hostOS = sync.OnceValue(func() string { return hostFromEvidence(gatherHostEv
 //
 // Never "windows": on a Windows host a fat APE runs its embedded native
 // GOOS=windows payload, which compiles host_other.go instead.
-func HostOS() string { return hostOS() }
+func HostOS() string {
+	host, _ := probeHost()
+	return host
+}
+
+// HostSource names the signal HostOS decided from: "runtime", "uname",
+// "procfs", "coreservices", "no-procfs", or "" when nothing identified the
+// host.
+//
+// Log it next to HostOS. A host read off the machine and a host nothing could
+// be read for are the same kind of string to everything downstream, and this
+// is what separates them in one log line rather than one bisect.
+func HostSource() string {
+	_, source := probeHost()
+	return source
+}
 
 // gatherHostEvidence collects every host signal available to a cosmo binary.
 // Each one is independent, and each is recorded rather than acted on, so

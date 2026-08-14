@@ -17,9 +17,10 @@ import (
 
 func TestHostFromEvidence(t *testing.T) {
 	tests := []struct {
-		name string
-		e    hostEvidence
-		want string
+		name       string
+		e          hostEvidence
+		want       string
+		wantSource string
 	}{
 		{
 			name: "linux host: uname names it",
@@ -28,25 +29,32 @@ func TestHostFromEvidence(t *testing.T) {
 				procSelf:     pathPresent,
 				coreServices: pathAbsent,
 			},
-			want: hostLinux,
+			want:       hostLinux,
+			wantSource: sourceUname,
 		},
 		{
-			name: "macOS host: uname is ENOSYS under the darwin dispatcher, CoreServices is there",
+			// The measured shape on a macos-latest runner, inside the
+			// seatbelt sandbox go-toolchain's guard suite runs in: uname
+			// ENOSYSes under the darwin dispatcher and CoreServices reads
+			// fine, so this rung is the one that answers there.
+			name: "macOS host: uname is ENOSYS, CoreServices is readable",
 			e: hostEvidence{
 				unameSysname: "",
 				procSelf:     pathAbsent,
 				coreServices: pathPresent,
 			},
-			want: hostDarwin,
+			want:       hostDarwin,
+			wantSource: sourceCoreServices,
 		},
 		{
-			name: "macOS host in a sandbox that denies CoreServices: procfs is still definitely absent",
+			name: "macOS host whose CoreServices is denied: procfs is still definitely absent",
 			e: hostEvidence{
 				unameSysname: "",
 				procSelf:     pathAbsent,
 				coreServices: pathDenied,
 			},
-			want: hostDarwin,
+			want:       hostDarwin,
+			wantSource: sourceNoProcfs,
 		},
 		{
 			name: "linux host whose uname is blocked: procfs is still there",
@@ -55,7 +63,8 @@ func TestHostFromEvidence(t *testing.T) {
 				procSelf:     pathPresent,
 				coreServices: pathDenied,
 			},
-			want: hostLinux,
+			want:       hostLinux,
+			wantSource: sourceProcfs,
 		},
 		{
 			name: "sandbox denies every path and uname: no host is claimed",
@@ -64,7 +73,8 @@ func TestHostFromEvidence(t *testing.T) {
 				procSelf:     pathDenied,
 				coreServices: pathDenied,
 			},
-			want: hostUnknown,
+			want:       hostUnknown,
+			wantSource: sourceNone,
 		},
 		{
 			name: "runtime host outranks evidence that contradicts it",
@@ -74,7 +84,8 @@ func TestHostFromEvidence(t *testing.T) {
 				procSelf:     pathPresent,
 				coreServices: pathAbsent,
 			},
-			want: hostDarwin,
+			want:       hostDarwin,
+			wantSource: sourceRuntime,
 		},
 		{
 			name: "runtime host is used when nothing else can be read",
@@ -83,7 +94,8 @@ func TestHostFromEvidence(t *testing.T) {
 				procSelf:     pathDenied,
 				coreServices: pathDenied,
 			},
-			want: hostLinux,
+			want:       hostLinux,
+			wantSource: sourceRuntime,
 		},
 		{
 			name: "a runtime host this package does not dispatch for is not trusted onward",
@@ -92,7 +104,8 @@ func TestHostFromEvidence(t *testing.T) {
 				procSelf:     pathDenied,
 				coreServices: pathDenied,
 			},
-			want: hostUnknown,
+			want:       hostUnknown,
+			wantSource: sourceNone,
 		},
 		{
 			name: "uname naming a third OS is not read as darwin, whatever procfs says",
@@ -101,28 +114,34 @@ func TestHostFromEvidence(t *testing.T) {
 				procSelf:     pathAbsent,
 				coreServices: pathAbsent,
 			},
-			want: hostUnknown,
+			want:       hostUnknown,
+			wantSource: sourceNone,
 		},
 		{
-			name: "uname sysname is matched case-insensitively",
-			e:    hostEvidence{unameSysname: "DARWIN"},
-			want: hostDarwin,
+			name:       "uname sysname is matched case-insensitively",
+			e:          hostEvidence{unameSysname: "DARWIN"},
+			want:       hostDarwin,
+			wantSource: sourceUname,
 		},
 		{
-			name: "an emulated uname naming XNU is darwin",
-			e:    hostEvidence{unameSysname: "xnu"},
-			want: hostDarwin,
+			name:       "an emulated uname naming XNU is darwin",
+			e:          hostEvidence{unameSysname: "xnu"},
+			want:       hostDarwin,
+			wantSource: sourceUname,
 		},
 		{
-			name: "no evidence at all claims nothing",
-			e:    hostEvidence{},
-			want: hostUnknown,
+			name:       "no evidence at all claims nothing",
+			e:          hostEvidence{},
+			want:       hostUnknown,
+			wantSource: sourceNone,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, hostFromEvidence(tt.e))
+			host, source := hostFromEvidence(tt.e)
+			assert.Equal(t, tt.want, host)
+			assert.Equal(t, tt.wantSource, source, "the signal that decided it")
 		})
 	}
 }
@@ -134,7 +153,27 @@ func TestHostFromEvidenceNeverDefaultsToLinux(t *testing.T) {
 		{procSelf: pathDenied, coreServices: pathDenied},
 		{unameSysname: "", procSelf: pathDenied, coreServices: pathAbsent},
 	} {
-		assert.NotEqual(t, hostLinux, hostFromEvidence(e), "evidence: %+v", e)
+		host, source := hostFromEvidence(e)
+		assert.NotEqual(t, hostLinux, host, "evidence: %+v", e)
+		assert.Equal(t, sourceNone, source, "a host nothing identified must not claim a source")
+	}
+}
+
+// Every host this package claims has to name the signal that claimed it, and
+// every host it does not claim has to name none. A source is only worth
+// logging if those two can never be confused.
+func TestHostAndSourceAgree(t *testing.T) {
+	for _, e := range []hostEvidence{
+		{runtimeHost: hostLinux},
+		{unameSysname: "Linux"},
+		{procSelf: pathPresent},
+		{coreServices: pathPresent},
+		{procSelf: pathAbsent},
+		{procSelf: pathDenied, coreServices: pathDenied},
+		{},
+	} {
+		host, source := hostFromEvidence(e)
+		assert.Equal(t, host == hostUnknown, source == sourceNone, "evidence: %+v", e)
 	}
 }
 
@@ -203,6 +242,7 @@ func TestHostOSOnANativeBuild(t *testing.T) {
 		t.Skip("a cosmo APE probes its host; see TestHostOSOnAnAPE")
 	}
 	assert.Equal(t, runtime.GOOS, HostOS())
+	assert.Equal(t, sourceGOOS, HostSource())
 }
 
 // On an APE the host is whatever this test binary is running on. The suite
@@ -212,9 +252,11 @@ func TestHostOSOnAnAPE(t *testing.T) {
 	if runtime.GOOS != "cosmo" {
 		t.Skip("not an APE")
 	}
-	host := HostOS()
+	host, source := HostOS(), HostSource()
+	t.Logf("host: %s (via %s)", host, source)
 	require.NotEqual(t, hostUnknown, host, "the probe identified no host on a machine this test is running on")
 	assert.Contains(t, []string{hostLinux, hostDarwin}, host)
+	assert.NotEqual(t, sourceNone, source)
 
 	// Cross-check against the filesystem the test itself can see.
 	if _, err := os.Stat("/proc/self"); err == nil {

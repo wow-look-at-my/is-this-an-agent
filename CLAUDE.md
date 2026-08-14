@@ -33,12 +33,15 @@ standalone shell script per agent.
   configuration gets checked against the two that can.
 - `proc_linux.go`, `proc_darwin.go`, `proc_cosmo.go` — one `CommPPID` each:
   /proc, sysctl(KERN_PROC), and the host dispatch between /proc and `ps`.
-- `host.go` — `HostOS()`'s decision, free of build tags: `hostFromEvidence`
-  and `lookupForHost` take their inputs as data, so a Mac inside a sandbox that
-  denies the probe paths is a test case on every platform. `host_cosmo.go`
-  gathers the evidence (uname, then path probes); `host_other.go` (`!cosmo`) is
-  `runtime.GOOS`, because every other build runs on what it was compiled for.
-  Depth: `docs/host-dispatch.md`.
+- `host.go` — `HostOS()`/`HostSource()`'s decision, free of build tags:
+  `hostFromEvidence` and `lookupForHost` take their inputs as data, so a Mac in
+  a sandbox that denies the probe paths is a test case on every platform. Every
+  answer names the signal that produced it, so one log line separates "read the
+  machine" from "read nothing". `host_cosmo.go` gathers the evidence (uname,
+  then path probes); `host_other.go` (`!cosmo`) is `runtime.GOOS`, because every
+  other build runs on what it was compiled for. Depth: `docs/host-dispatch.md`,
+  which also names go-toolchain's `smoke-macos` job as the integration prover
+  for the darwin branch.
 - `proc_other.go` (`!linux && !cosmo && !darwin`) — stubs for platforms with
   no process-tree lookup at all (windows); detection there is by environment
   marker. They answer `false`, never a guess: callers use them to GRANT an

@@ -41,8 +41,10 @@ GOOS=cosmo APE — one binary that boots on both — picks at runtime via
 `HostOS()`, so detection works on a Mac too.
 
 `HostOS()` reports `"linux"`, `"darwin"`, `"windows"`, or `""` when a sandbox
-left nothing to go on. It never guesses a host. Where there is no process
-lookup at all (Windows), detection falls back to environment markers.
+left nothing to go on — it never guesses — and `HostSource()` says which signal
+decided, so a log line can read `host: darwin (via coreservices)`. Where there
+is no process lookup at all (Windows), detection falls back to environment
+markers.
 
 ## Detection is advisory
 

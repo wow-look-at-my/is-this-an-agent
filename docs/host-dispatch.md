@@ -37,8 +37,9 @@ startup.
 ## The probe, and what a sandbox does to it
 
 `hostFromEvidence` weighs signals in order of how much a sandbox can interfere
-with them. **No rung ends in a default.** Evidence that identifies nothing
-yields `""`.
+with them, and reports both the host and **which signal decided it**
+(`HostSource()`). **No rung ends in a default.** Evidence that identifies
+nothing yields `""`.
 
 1. **What the runtime booted with.** The cosmo runtime records the host at
    `rt0` and dispatches every syscall on it, so it is fact rather than
@@ -50,25 +51,30 @@ yields `""`.
    Linux. On a macOS host the darwin dispatcher has no case for it and returns
    ENOSYS — so its silence is itself evidence, used by rung 5.
 3. **`/proc/self` present** ⟹ linux.
-4. **`/System/Library/CoreServices` present** ⟹ darwin.
+4. **`/System/Library/CoreServices` present** ⟹ darwin. This is the rung that
+   answers on a real Mac, including inside the seatbelt sandbox dats runs
+   commands in: measured on a macos-latest runner, that profile reads
+   `/System/Library/CoreServices` fine.
 5. **`/proc/self` definitely absent** ⟹ darwin. Under cosmo the host is Linux
-   or macOS, and procfs is on every Linux.
+   or macOS, and procfs is on every Linux. Rung 4 is expected to answer first
+   on macOS; this one is what keeps a *stricter* sandbox than the one measured
+   from turning into a wrong answer rather than a missing one.
 
 Rungs 3–5 turn on the distinction `statPath` makes between a path that is
 *absent* (ENOENT) and one whose stat was *refused* (EPERM, EACCES). A refusal
 is evidence of nothing. Reading it as absence is what makes a probe conclude
 "linux" on a Mac: that is the failure mode of a probe that ends in
-`return "linux"`, and rung 5 is why this one does not need such an ending.
+`return "linux"`, and rungs 4–5 are why this one does not need such an ending.
 
 Worked cases:
 
-| host | uname | `/proc/self` | CoreServices | answer |
-|---|---|---|---|---|
-| Linux | `Linux` | present | absent | linux |
-| macOS | ENOSYS | absent | present | darwin |
-| macOS, sandbox hides `/System/Library` | ENOSYS | absent | denied | **darwin** |
-| Linux, uname blocked | fails | present | denied | linux |
-| every signal refused | fails | denied | denied | **`""`** |
+| host | uname | `/proc/self` | CoreServices | answer | source |
+|---|---|---|---|---|---|
+| Linux | `Linux` | present | absent | linux | `uname` |
+| macOS (measured, sandboxed and not) | ENOSYS | absent | present | darwin | `coreservices` |
+| macOS, a sandbox hiding `/System/Library` | ENOSYS | absent | denied | **darwin** | `no-procfs` |
+| Linux, uname blocked | fails | present | denied | linux | `procfs` |
+| every signal refused | fails | denied | denied | **`""`** | `""` |
 
 ## What `""` means
 
@@ -81,23 +87,48 @@ first. Neither can answer wrongly on the other's host, because
 fields on both. So a blind probe costs one failed file read, not a wrong
 answer, and `CommPPID` still resolves.
 
-A caller that needs to know it was blind can ask `HostOS()` directly.
+A caller that needs to know it was blind asks `HostOS()`, and `HostSource()`
+tells it whether the answer was read off the machine or not read at all. Log
+both — `host: darwin (via coreservices)` — because a wrong host and an
+unreadable one are indistinguishable once they are just a branch taken.
 
-## Testing something no runner can run
+## Testing something no runner in this repo can run
 
-The configuration that matters — an APE on a macOS host — is one no CI runner
-in this org is. What CI does cover:
+The configuration that matters — an APE on a macOS host — is one no runner
+*here* is. What this repo's CI covers:
 
 - **The decision**, on every platform: `hostFromEvidence` and `lookupForHost`
   take their inputs as data, so each host above, sandboxed ones included, is a
-  case in `host_test.go`.
+  case in `host_test.go`, asserted on both the host and the source.
 - **The ps lookup**, on linux and darwin: `procps_test.go` asserts it agrees
   with the platform's native lookup, field for field, on a live process.
-- **The APE itself**, in the `cosmo-ape-check` CI job: it installs the
-  gosmopolitan toolchain, builds the package for GOOS=cosmo and RUNS the
-  suite — an APE executes natively on a Linux runner, so that is the real
-  binary probing a real host and taking the `/proc` branch.
+- **The APE itself**, in the `cosmo-ape-check` job: it installs the
+  gosmopolitan toolchain, builds for GOOS=cosmo and RUNS the suite — an APE
+  executing natively on a Linux runner, so that is the real binary probing a
+  real host and taking the `/proc` branch.
 
-What remains unproven is the darwin branch executing on real hardware: an APE
-on a Mac calling `ps`. Running this package's suite under GOOS=cosmo on a macOS
-runner is what would settle it.
+### Where the darwin branch actually gets exercised
+
+The integration prover is downstream, in **go-toolchain's `smoke-macos` job**
+(`.github/workflows/ci.yml`), and it is worth knowing about before changing
+anything here.
+
+That job runs on `macos-latest` against `dist/go-toolchain_cosmo_fat` — the
+published fat APE, the artifact ARM64 macs download — and drives it through
+`.github/dats-fixtures/smoke-macos-agent-output-guard.dats` inside dats'
+seatbelt sandbox. Because the binary under test is the APE, it reports
+`runtime.GOOS == "cosmo"` and compiles `claudeguard_proc.go` (`linux ||
+cosmo`), **not** `claudeguard_darwin.go` — so the guard's socket and captured
+-stdout cases call `agent.CommPPID` and `agent.IsPipeReader` on a macOS host
+through the cosmo dispatch. That is this package's darwin branch, on real
+Apple hardware, in the sandbox that matters.
+
+So the honest status of the one link this repo cannot close: it is not open-
+ended. It is the next thing that gets tested downstream, and a `smoke-macos`
+run after go-toolchain picks up this package either proves it or localises
+what is left.
+
+A direct proof here would need a `cosmo-ape-check` leg on `macos-latest`, and
+what blocks that is distribution, not design: gosmopolitan publishes a
+linux-amd64 toolchain only (`?os=linux&arch=amd64`). If a darwin/arm64 tarball
+is published, add the leg — the job body is otherwise unchanged.
