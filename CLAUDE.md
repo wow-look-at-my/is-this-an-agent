@@ -16,15 +16,32 @@ standalone shell script per agent.
   agent starts here, and is incomplete without `scripts/is-this-<id>.sh`.
 - `walk.go` — the parent-chain walk, with the chain supplied by the caller
   (`Lookup`): `AncestorAgent`, `AncestorPID`, `PipeReader`. No build tags —
-  only the /proc lookup is platform-specific, and a walk you can hand a chain
-  to is the only kind that is testable.
-- `proc.go` (`linux || cosmo`) — the /proc lookup `CommPPID` plus the real
-  entry points `ProcessAncestor`, `IsAncestorPID`, `IsPipeReader`. The
-  constraint is `linux || cosmo`, NOT `linux`: this org's released "linux"
-  binaries are GOOS=cosmo APE copies, and a `_linux.go` filename would compile
-  detection out of every one of them while the GOOS=linux tests stayed green.
-- `proc_darwin.go` (`darwin`) — the sysctl(KERN_PROC) lookup `CommPPID` plus
-  the real entry points, for native darwin builds (no /proc there).
+  only the lookup is platform-specific, and a walk you can hand a chain to is
+  the only kind that is testable.
+- `proc.go` (`linux || darwin || cosmo`) — the real entry points
+  `ProcessAncestor`, `IsAncestorPID`, `IsPipeReader`, built on whichever
+  `CommPPID` the platform supplies. One copy, not one per platform.
+- `procfs.go` (`linux || cosmo`) — the /proc lookup. The constraint is
+  `linux || cosmo`, NOT `linux`: this org's released "linux" binaries are
+  GOOS=cosmo APE copies, and a `_linux.go` filename would compile detection out
+  of every one of them while the GOOS=linux tests stayed green.
+- `procps.go` (`linux || darwin || cosmo`) — the `ps(1)` lookup, which is what
+  an APE uses on a macOS host: `x/sys/unix` has no cosmo port and the fork's
+  darwin dispatcher emulates no sysctl, so `ps` is the only reachable reader of
+  the same `kinfo_proc`. Compiled on linux and darwin too, unused there outside
+  tests — that is how the one lookup no CI runner executes in its real
+  configuration gets checked against the two that can.
+- `proc_linux.go`, `proc_darwin.go`, `proc_cosmo.go` — one `CommPPID` each:
+  /proc, sysctl(KERN_PROC), and the host dispatch between /proc and `ps`.
+- `host.go` — `HostOS()`/`HostSource()`'s decision, free of build tags:
+  `hostFromEvidence` and `lookupForHost` take their inputs as data, so a Mac in
+  a sandbox that denies the probe paths is a test case on every platform. Every
+  answer names the signal that produced it, so one log line separates "read the
+  machine" from "read nothing". `host_cosmo.go` gathers the evidence (uname,
+  then path probes); `host_other.go` (`!cosmo`) is `runtime.GOOS`, because every
+  other build runs on what it was compiled for. Depth: `docs/host-dispatch.md`,
+  which also names go-toolchain's `smoke-macos` job as the integration prover
+  for the darwin branch.
 - `proc_other.go` (`!linux && !cosmo && !darwin`) — stubs for platforms with
   no process-tree lookup at all (windows); detection there is by environment
   marker. They answer `false`, never a guess: callers use them to GRANT an
@@ -53,6 +70,12 @@ standalone shell script per agent.
 - **A marker set to `0` or empty does not count** — an explicit opt-out must
   not read as the agent it denies.
 - **Process names are prefixes**, because /proc comm is truncated to 15 bytes.
+  Every lookup reports that same accounting name — sysctl's `P_comm` and ps's
+  `ucomm` are the same field — so a prefix matches whichever one answered.
+- **The lookup is chosen by HOST, not by `runtime.GOOS`.** A cosmo APE is one
+  binary that boots on Linux and on macOS, and answers `"cosmo"` on both. An
+  unidentified host is `""` and asks both lookups; it is never assumed to be
+  linux, which is the failure that made an APE on a Mac resolve nothing.
 - **Detection is advisory, never a security boundary.** Anyone can set a
   marker; the roster is about behaving sensibly, not about proof.
 - **Every walk is bounded** (`maxHops`): pid reuse must not become a loop.

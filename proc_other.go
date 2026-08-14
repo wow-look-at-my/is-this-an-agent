@@ -8,8 +8,9 @@
 //
 // These must never shadow the real implementations: the released "linux"
 // binaries of this org's tools are GOOS=cosmo APE copies, and cosmo is
-// excluded from this file for exactly that reason (see proc.go), and native
-// darwin builds have their own sysctl-backed lookup (see proc_darwin.go).
+// excluded from this file for exactly that reason -- an APE picks its lookup
+// from the host it booted on (proc_cosmo.go) -- and native darwin builds have
+// their own sysctl-backed lookup (proc_darwin.go).
 
 package agent
 
