@@ -38,7 +38,7 @@ done
 
 # One record per agent: id|Name|env markers|process prefixes|pid variables.
 AGENT_ROSTER='claude|Claude|CLAUDECODE|claude|
-grok|grok build|GROK_AGENT|grok xai-grok-pager|
+grok|grok build|GROK_AGENT|grok grok-build xai-grok-pager|
 codex|Codex|CODEX_SANDBOX CODEX_SANDBOX_NETWORK_DISABLED|codex|
 gemini|Gemini CLI|GEMINI_CLI|gemini|
 opencode|opencode|OPENCODE|opencode|OPENCODE_PID'
