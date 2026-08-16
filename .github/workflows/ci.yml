@@ -18,6 +18,7 @@ jobs:
       actions: read
       checks: read
     steps:
+      - uses: actions/checkout@v4
       # autorelease off: this repo has nothing to publish. The Go half is
       # consumed through go.mod and the scripts straight from the repo, so the
       # only thing a release would carry is cmd/gen-scripts -- the internal
@@ -42,6 +43,7 @@ jobs:
           - { goos: darwin, goarch: arm64 }
           - { goos: windows, goarch: amd64 }
     steps:
+      - uses: actions/checkout@v4
       - uses: wow-look-at-my/go-toolchain@v1
         with:
           os: ${{ matrix.target.goos }}
@@ -61,8 +63,8 @@ jobs:
   cosmo-ape-check:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: wow-look-at-my/go-toolchain@v1
         with:
-          os: cosmo
-          arch: amd64
+          targets: cosmo
           autorelease: 'false'
