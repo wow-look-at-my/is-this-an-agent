@@ -18,7 +18,6 @@ jobs:
       actions: read
       checks: read
     steps:
-      - uses: actions/checkout@v4
       # autorelease off: this repo has nothing to publish. The Go half is
       # consumed through go.mod and the scripts straight from the repo, so the
       # only thing a release would carry is cmd/gen-scripts -- the internal
@@ -43,14 +42,11 @@ jobs:
           - { goos: darwin, goarch: arm64 }
           - { goos: windows, goarch: amd64 }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: wow-look-at-my/go-toolchain@v1
         with:
-          go-version-file: go.mod
-      - run: go build ./...
-        env:
-          GOOS: ${{ matrix.target.goos }}
-          GOARCH: ${{ matrix.target.goarch }}
+          os: ${{ matrix.target.goos }}
+          arch: ${{ matrix.target.goarch }}
+          autorelease: 'false'
 
   # The APE half of the host dispatch: proc_cosmo.go and host_cosmo.go compile
   # under no other GOOS, so without this job a typo in either ships green and
@@ -65,12 +61,8 @@ jobs:
   cosmo-ape-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: curl -fL --compressed "https://dl.pazer.build/gosmopolitan?branch=master&os=linux&arch=amd64" | tar -xz -C "$RUNNER_TEMP"
-      # The fork's go first, and the go_cosmo_*_exec wrappers `go test` needs
-      # to run an APE it just built.
-      - run: printf '%s\n' "$RUNNER_TEMP/go/bin" "$RUNNER_TEMP/go/misc/cosmo" >> "$GITHUB_PATH"
-      - run: go test -count=1 ./...
-        env:
-          GOOS: cosmo
-          GOTOOLCHAIN: local
+      - uses: wow-look-at-my/go-toolchain@v1
+        with:
+          os: cosmo
+          arch: amd64
+          autorelease: 'false'
