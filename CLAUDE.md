@@ -8,6 +8,13 @@ standalone shell script per agent.
 
 `go-toolchain` (no arguments) in the repo root. Never bare `go` commands.
 
+## CI
+
+`.github/workflows/ci.yml` runs three jobs: `test` (the toolchain's own
+build+test+vet), `cross-compile-check` (darwin/windows build-only smoke),
+and `cosmo-ape-check` (installs the gosmopolitan fork and runs the suite
+as a real APE). Depth: `docs/CI.md`.
+
 ## Layout
 
 - `agent.go` — the **roster** (each agent's `ID`, `Name`, env markers, process
