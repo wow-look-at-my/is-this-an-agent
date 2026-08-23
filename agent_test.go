@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 )
 
 // clearMarkers unsets every roster marker (and PID variable) for the duration
@@ -25,15 +26,15 @@ func clearMarkers(t *testing.T) {
 }
 
 func TestRosterIsWellFormed(t *testing.T) {
-	seenID := map[string]bool{}
+	seenID := set.New[string]()
 	seenEnv := map[string]string{}
 	for _, a := range roster {
 		assert.NotEmpty(t, a.ID, "every agent needs an ID")
 		assert.NotEmpty(t, a.Name, "every agent needs a Name")
 		assert.NotEmpty(t, a.EnvVars, "%s: an agent with no env marker cannot be detected off a process tree", a.ID)
 		assert.NotEmpty(t, a.Procs, "%s: an agent with no process name cannot be detected by ancestry", a.ID)
-		assert.False(t, seenID[a.ID], "duplicate agent id %q", a.ID)
-		seenID[a.ID] = true
+		assert.False(t, seenID.Contains(a.ID), "duplicate agent id %q", a.ID)
+		seenID.Add(a.ID)
 
 		// A marker claimed by two agents makes detection order-dependent and
 		// the answer arbitrary.
