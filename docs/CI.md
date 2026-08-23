@@ -1,0 +1,36 @@
+# CI
+
+## `test` job: no autorelease
+
+Autorelease off: this repo has nothing to publish. The Go half is
+consumed through go.mod and the scripts straight from the repo, so the
+only thing a release would carry is cmd/gen-scripts -- the internal
+generator, which belongs on nobody's machine but CI's. Without the
+publish there is also nothing needing deployments: write or
+artifact-metadata: write, so those grants are gone too.
+
+## `cross-compile-check` job
+
+This library's only build check is linux (the `test` job) -- a build-only
+smoke check here for the platforms this package has per-GOOS source for
+that the stock toolchain can target (proc_darwin.go, proc_other.go's
+windows/etc. fallback), so a broken darwin build fails CI instead of
+surfacing only when someone actually builds go-toolchain for darwin.
+GOOS=cosmo needs the gosmopolitan toolchain and has its own job below.
+
+## `cosmo-ape-check` job
+
+The APE half of the host dispatch: proc_cosmo.go and host_cosmo.go compile
+under no other GOOS, so without this job a typo in either ships green and
+surfaces as an APE that cannot resolve a process. The stock toolchain has
+no GOOS=cosmo, so this one installs the gosmopolitan fork.
+
+It RUNS the suite rather than only building it: an APE executes natively on
+a Linux runner, so this is the real binary answering on a real host --
+which is the linux half of the dispatch tested end to end. The darwin half
+is covered by the parts of it that any platform can execute (the decision
+in host_test.go, the ps lookup in procps_test.go).
+
+The fork's go first, and the go_cosmo_*_exec wrappers `go test` needs
+to run an APE it just built -- that is why its bin directory and
+misc/cosmo are prepended to `GITHUB_PATH` before the test step runs.
