@@ -19,12 +19,10 @@ jobs:
       checks: read
     steps:
       - uses: actions/checkout@v4
-      # see docs/CI.md
       - uses: wow-look-at-my/go-toolchain@v1
         with:
           autorelease: 'false'
 
-  # see docs/CI.md
   cross-compile-check:
     runs-on: ubuntu-latest
     strategy:
@@ -42,13 +40,11 @@ jobs:
           GOOS: ${{ matrix.target.goos }}
           GOARCH: ${{ matrix.target.goarch }}
 
-  # see docs/CI.md
   cosmo-ape-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: curl -fL --compressed "https://dl.pazer.build/gosmopolitan?branch=master&os=linux&arch=amd64" | tar -xz -C "$RUNNER_TEMP"
-      # see docs/CI.md
       - run: printf '%s\n' "$RUNNER_TEMP/go/bin" "$RUNNER_TEMP/go/misc/cosmo" >> "$GITHUB_PATH"
       - run: go test -count=1 ./...
         env:
