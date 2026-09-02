@@ -30,8 +30,12 @@ const psPath = "/bin/ps"
 
 // psTimeout bounds the lookup. ps answers instantly or not at all; the bound
 // exists so a wedged host cannot hang a caller that only wanted to know who
-// its parent was.
-const psTimeout = 5 * time.Second
+// its parent was. Both are variables so a test can point the lookup at a
+// script and shorten the wait.
+var (
+	psBin     = psPath
+	psTimeout = 5 * time.Second
+)
 
 // commPPIDPS looks up a process's comm and parent pid by running ps. ok is
 // false if the pid is gone or ps cannot be run -- never a guess.
@@ -46,7 +50,11 @@ func commPPIDPS(pid int) (comm string, ppid int, ok bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), psTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, psPath, "-o", "ppid=,ucomm=", "-p", strconv.Itoa(pid)).Output()
+	cmd := exec.CommandContext(ctx, psBin, "-o", "ppid=,ucomm=", "-p", strconv.Itoa(pid))
+	// The kill at the deadline does not end Wait while the stdout pipe stays
+	// open, and a ps stuck in the kernel keeps it open. WaitDelay closes it.
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
 	if err != nil {
 		return "", 0, false
 	}
