@@ -4,7 +4,9 @@ package agent
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -112,6 +114,23 @@ func TestCommPPIDPSRejectsNonPIDs(t *testing.T) {
 		_, _, ok := commPPIDPS(pid)
 		assert.False(t, ok, "pid %d", pid)
 	}
+}
+
+// A ps that never answers must not hang the caller. The script stands in for
+// a ps stuck in the kernel: it hands its stdout to a grandchild and sleeps,
+// so the kill at the deadline leaves the pipe open. Without WaitDelay the
+// lookup blocks until the grandchild exits.
+func TestCommPPIDPSGivesUpOnAHungPS(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "ps")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nsleep 20 &\nsleep 20\n"), 0o755))
+	oldBin, oldTimeout := psBin, psTimeout
+	psBin, psTimeout = script, 200*time.Millisecond
+	t.Cleanup(func() { psBin, psTimeout = oldBin, oldTimeout })
+
+	start := time.Now()
+	_, _, ok := commPPIDPS(os.Getpid())
+	assert.False(t, ok)
+	assert.Less(t, time.Since(start), 5*time.Second, "the lookup waited for the grandchild instead of giving up")
 }
 
 func requirePS(t *testing.T) {
