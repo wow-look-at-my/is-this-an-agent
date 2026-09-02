@@ -19,7 +19,7 @@ jobs:
       checks: read
     steps:
       - uses: actions/checkout@v4
-      - uses: wow-look-at-my/go-toolchain@v1
+      - uses: wow-look-at-my/go-toolchain@master
         with:
           autorelease: 'false'
 
