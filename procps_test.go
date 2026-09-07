@@ -121,6 +121,8 @@ func TestCommPPIDPSRejectsNonPIDs(t *testing.T) {
 // so the kill at the deadline leaves the pipe open. Without WaitDelay the
 // lookup blocks until the grandchild exits.
 func TestCommPPIDPSGivesUpOnAHungPS(t *testing.T) {
+	// Same reason as the test below: this one swaps psBin too.
+	t.Serial()
 	script := filepath.Join(t.TempDir(), "ps")
 	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nsleep 20 &\nsleep 20\n"), 0o755))
 	oldBin, oldTimeout := psBin, psTimeout
@@ -131,6 +133,55 @@ func TestCommPPIDPSGivesUpOnAHungPS(t *testing.T) {
 	_, _, ok := commPPIDPS(os.Getpid())
 	assert.False(t, ok)
 	assert.Less(t, time.Since(start), 5*time.Second, "the lookup waited for the grandchild instead of giving up")
+}
+
+// The three ways a lookup answers nothing want three different repairs, so
+// each has to arrive as its own sentence. A caller reading only ok cannot
+// tell a refused reader from a process that has already exited.
+func TestCommPPIDPSSaysWhyItAnsweredNothing(t *testing.T) {
+	// psBin is package state, and a top-level test in this fork starts
+	// parallel. Swapping it under a sibling makes that sibling read a fake.
+	t.Serial()
+	dir := t.TempDir()
+	oldBin, oldTimeout := psBin, psTimeout
+	t.Cleanup(func() { psBin, psTimeout = oldBin, oldTimeout })
+
+	t.Run("a ps that cannot be started", func(t *testing.T) {
+		psBin = filepath.Join(dir, "no-such-ps")
+		_, _, ok := commPPIDPS(os.Getpid())
+		require.False(t, ok)
+		assert.Contains(t, LookupError(), "could not be run")
+	})
+
+	t.Run("a ps that refuses", func(t *testing.T) {
+		script := filepath.Join(dir, "refusing-ps")
+		require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho 'operation not permitted' >&2\nexit 1\n"), 0o755))
+		psBin = script
+		_, _, ok := commPPIDPS(os.Getpid())
+		require.False(t, ok)
+		// The reason ps gave is the whole point: a sandbox says so on stderr.
+		assert.Contains(t, LookupError(), "operation not permitted")
+	})
+
+	t.Run("a ps that ran and knew nothing", func(t *testing.T) {
+		script := filepath.Join(dir, "silent-ps")
+		require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+		psBin = script
+		_, _, ok := commPPIDPS(os.Getpid())
+		require.False(t, ok)
+		assert.Contains(t, LookupError(), "printed no row")
+	})
+
+	t.Run("an answer clears the last reason", func(t *testing.T) {
+		script := filepath.Join(dir, "answering-ps")
+		require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho '  42 launchd'\n"), 0o755))
+		psBin = script
+		comm, ppid, ok := commPPIDPS(os.Getpid())
+		require.True(t, ok)
+		assert.Equal(t, "launchd", comm)
+		assert.Equal(t, 42, ppid)
+		assert.Empty(t, LookupError(), "a stale reason names a problem that is no longer there")
+	})
 }
 
 func requirePS(t *testing.T) {

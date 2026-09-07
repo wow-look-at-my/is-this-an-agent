@@ -53,6 +53,7 @@ as a real APE). Depth: `docs/CI.md`.
   no process-tree lookup at all (windows); detection there is by environment
   marker. They answer `false`, never a guess: callers use them to GRANT an
   allowance.
+- `lookuperr.go` — `LookupError()`, why the last lookup answered nothing. `Lookup` reports a bare false. That is the right shape for deciding whether an agent is an ancestor. It is the wrong one for the person reading the log afterwards. A denied `/bin/ps`, an exited pid, and a platform with no reader are three repairs arriving as one answer. Advisory, and free of build tags, so every platform's stub records a reason too.
 - `capture.go` — `IsCapturePath`: the one redirect that does not hide output
   (the harness's own transcript capture). Claude-only, because it is the only
   agent whose capture path is identifiable.
