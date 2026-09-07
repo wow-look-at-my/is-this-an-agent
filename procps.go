@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -46,6 +47,7 @@ var (
 // match identically whichever lookup answered.
 func commPPIDPS(pid int) (comm string, ppid int, ok bool) {
 	if pid <= 0 {
+		noteLookupErr("ps was asked for pid " + strconv.Itoa(pid) + ", which is not a pid")
 		return "", 0, false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), psTimeout)
@@ -56,9 +58,38 @@ func commPPIDPS(pid int) (comm string, ppid int, ok bool) {
 	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
 	if err != nil {
+		noteLookupErr(psFailure(pid, ctx.Err(), err))
 		return "", 0, false
 	}
-	return parsePS(string(out))
+	comm, ppid, ok = parsePS(string(out))
+	if !ok {
+		// ps ran and said nothing about the pid. That is what it does for a
+		// process that has already exited, and it is not a broken reader.
+		noteLookupErr(psBin + " printed no row for pid " + strconv.Itoa(pid))
+		return "", 0, false
+	}
+	clearLookupErr()
+	return comm, ppid, true
+}
+
+// psFailure names why running ps did not produce output. The three causes
+// want different repairs: a deadline says the host is wedged, an exit
+// status says ps refused, and anything else says it could not be started
+// at all -- which on a sandboxed host is the interesting one.
+func psFailure(pid int, ctxErr, err error) string {
+	at := " looking up pid " + strconv.Itoa(pid)
+	if errors.Is(ctxErr, context.DeadlineExceeded) {
+		return psBin + at + " did not answer within " + psTimeout.String()
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		reason := psBin + at + " exited " + exit.ProcessState.String()
+		if stderr := strings.TrimSpace(string(exit.Stderr)); stderr != "" {
+			reason += ": " + stderr
+		}
+		return reason
+	}
+	return psBin + at + " could not be run: " + err.Error()
 }
 
 // parsePS reads one `ps -o ppid=,ucomm=` row: a right-aligned parent pid, a
