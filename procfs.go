@@ -18,8 +18,12 @@ import (
 // commPPIDProc reads /proc/<pid>/stat and returns the process's comm and its
 // parent PID. ok is false if the entry cannot be read or parsed.
 func commPPIDProc(pid int) (comm string, ppid int, ok bool) {
-	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	stat := "/proc/" + strconv.Itoa(pid) + "/stat"
+	data, err := os.ReadFile(stat)
 	if err != nil {
+		// The common case is a process that exited. A permission error, or
+		// no /proc at all, is the interesting one, and err says which.
+		noteLookupErr("could not read " + stat + ": " + err.Error())
 		return "", 0, false
 	}
 	s := string(data)
@@ -29,16 +33,20 @@ func commPPIDProc(pid int) (comm string, ppid int, ok bool) {
 	open := strings.IndexByte(s, '(')
 	closeParen := strings.LastIndexByte(s, ')')
 	if open < 0 || closeParen < open {
+		noteLookupErr(stat + " has no parenthesized comm field")
 		return "", 0, false
 	}
 	comm = s[open+1 : closeParen]
 	fields := strings.Fields(s[closeParen+1:]) // [state, ppid, ...]
 	if len(fields) < 2 {
+		noteLookupErr(stat + " ends before the ppid field")
 		return "", 0, false
 	}
 	ppid, err = strconv.Atoi(fields[1])
 	if err != nil {
+		noteLookupErr(stat + " has a ppid field that is not a number: " + err.Error())
 		return "", 0, false
 	}
+	clearLookupErr()
 	return comm, ppid, true
 }

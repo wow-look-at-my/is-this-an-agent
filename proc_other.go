@@ -25,5 +25,10 @@ func IsAncestorPID(int) bool { return false }
 // IsPipeReader likewise cannot identify the far end of a pipe here.
 func IsPipeReader(string, int) bool { return false }
 
-// CommPPID has no /proc to read.
-func CommPPID(int) (comm string, ppid int, ok bool) { return "", 0, false }
+// CommPPID has no process reader on this platform. It says so rather than
+// answering a bare false, which downstream cannot tell from a reader that
+// ran and was refused.
+func CommPPID(int) (comm string, ppid int, ok bool) {
+	noteLookupErr("this platform has no process-tree lookup, so no ancestor can be read")
+	return "", 0, false
+}
