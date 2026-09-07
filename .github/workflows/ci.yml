@@ -45,6 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The fork refuses a CI run with no shared cache to write to, so this job needs the config the other jobs get through their action.
+      - uses: wow-look-at-my/actions@secret-server#latest
       - run: curl -fL --compressed "https://dl.pazer.build/gosmopolitan?branch=master&os=linux&arch=amd64" | tar -xz -C "$RUNNER_TEMP"
       - run: printf '%s\n' "$RUNNER_TEMP/go/bin" "$RUNNER_TEMP/go/misc/cosmo" >> "$GITHUB_PATH"
       - run: go test -count=1 ./...
