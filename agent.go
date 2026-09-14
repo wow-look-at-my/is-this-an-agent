@@ -73,7 +73,7 @@ var roster = []Agent{
 		ID:      "grok",
 		Name:    "grok build",
 		EnvVars: []string{"GROK_AGENT"},
-		Procs:   []string{"grok", "xai-grok-pager"},
+		Procs:   []string{"grok", "grok-build", "xai-grok-pager"},
 	},
 	{
 		ID:   "codex",

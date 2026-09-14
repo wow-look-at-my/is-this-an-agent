@@ -37,7 +37,7 @@ done
 
 AGENT_NAME='grok build'
 AGENT_ENV_VARS='GROK_AGENT'
-AGENT_PROCS='grok xai-grok-pager'
+AGENT_PROCS='grok grok-build xai-grok-pager'
 AGENT_PID_VARS=''
 
 # --- shared detection engine ------------------------------------------------
